@@ -1,0 +1,530 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>오목 - 친구 & AI 대결</title>
+<style>
+  :root{
+    --bg:#1f2430; --panel:#2a3040; --text:#eef1f6; --accent:#f2b84b; --muted:#98a2b8;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; background:linear-gradient(160deg,#1a1e29,#2b3248);
+    color:var(--text); font-family:"Pretendard","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+    display:flex; flex-direction:column; align-items:center; padding:16px;
+  }
+  h1{margin:6px 0 14px; font-size:28px; letter-spacing:2px}
+  h1 span{color:var(--accent)}
+  .wrap{display:flex; gap:20px; flex-wrap:wrap; justify-content:center; width:100%; max-width:1000px}
+  .panel{
+    background:var(--panel); border-radius:16px; padding:18px; width:280px;
+    box-shadow:0 8px 24px rgba(0,0,0,.35); align-self:flex-start;
+  }
+  .panel h3{margin:0 0 8px; font-size:14px; color:var(--muted); font-weight:600}
+  .group{margin-bottom:16px}
+  .seg{display:flex; gap:6px}
+  .seg button{
+    flex:1; padding:10px 6px; border:2px solid transparent; border-radius:10px;
+    background:#3a4156; color:var(--text); font-size:15px; cursor:pointer; transition:.15s;
+  }
+  .seg button:hover{background:#454d66}
+  .seg button.active{border-color:var(--accent); background:#4a4430; color:var(--accent); font-weight:700}
+  .actions{display:flex; gap:8px}
+  .actions button{
+    flex:1; padding:12px; border:none; border-radius:10px; font-size:15px; font-weight:700; cursor:pointer;
+  }
+  #btnNew{background:var(--accent); color:#222}
+  #btnUndo{background:#3a4156; color:var(--text)}
+  #btnUndo:disabled{opacity:.4; cursor:not-allowed}
+  .status{
+    background:#1f2430; border-radius:12px; padding:12px; text-align:center; font-size:16px;
+    font-weight:700; margin-bottom:14px; min-height:48px; display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .dot{width:16px; height:16px; border-radius:50%; display:inline-block; border:1px solid #888}
+  .dot.b{background:radial-gradient(circle at 35% 35%,#666,#000)}
+  .dot.w{background:radial-gradient(circle at 35% 35%,#fff,#ccc)}
+  .score{display:flex; justify-content:space-around; text-align:center; font-size:13px; color:var(--muted)}
+  .score b{display:block; font-size:22px; color:var(--text)}
+  .desc{font-size:12px; color:var(--muted); line-height:1.5; margin-top:6px; min-height:36px}
+  .board-box{position:relative; width:min(92vw,640px)}
+  canvas{width:100%; aspect-ratio:1/1; display:block; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,.5); touch-action:manipulation; cursor:pointer}
+  #overlay{
+    position:absolute; inset:0; display:none; align-items:center; justify-content:center;
+    background:rgba(0,0,0,.45); border-radius:12px; flex-direction:column; gap:16px;
+  }
+  #overlay.show{display:flex}
+  #overlay .big{font-size:clamp(26px,6vw,44px); font-weight:800; color:#fff; text-shadow:0 3px 12px #000; text-align:center}
+  #overlay button{padding:12px 28px; border:none; border-radius:12px; background:var(--accent); font-size:17px; font-weight:800; cursor:pointer}
+  .hide{display:none!important}
+  footer{margin-top:16px; color:var(--muted); font-size:12px}
+</style>
+</head>
+<body>
+<h1>🎯 <span>오목</span> 대결</h1>
+
+<div class="wrap">
+  <div class="panel">
+    <div class="status" id="status"></div>
+
+    <div class="group">
+      <h3>게임 모드</h3>
+      <div class="seg" id="segMode">
+        <button data-v="pvp">👥 친구와</button>
+        <button data-v="ai" class="active">🤖 AI와</button>
+      </div>
+    </div>
+
+    <div class="group aiOnly">
+      <h3>AI 난이도</h3>
+      <div class="seg" id="segLevel">
+        <button data-v="low">하</button>
+        <button data-v="mid" class="active">중</button>
+        <button data-v="high">상</button>
+      </div>
+      <div class="desc" id="levelDesc"></div>
+    </div>
+
+    <div class="group aiOnly">
+      <h3>내 돌 색</h3>
+      <div class="seg" id="segColor">
+        <button data-v="1" class="active">⚫ 흑 (선공)</button>
+        <button data-v="2">⚪ 백 (후공)</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="btnNew">새 게임</button>
+      <button id="btnUndo">무르기</button>
+    </div>
+
+    <div class="group" style="margin-top:18px">
+      <h3>전적 (이번 접속 동안)</h3>
+      <div class="score">
+        <div><b id="sB">0</b>흑 승</div>
+        <div><b id="sD">0</b>무승부</div>
+        <div><b id="sW">0</b>백 승</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="board-box">
+    <canvas id="cv"></canvas>
+    <div id="overlay">
+      <div class="big" id="ovText"></div>
+      <button id="ovBtn">다시 하기</button>
+    </div>
+  </div>
+</div>
+
+<footer>15×15 · 흑 선공 · 가로/세로/대각선 5목 이상이면 승리</footer>
+
+<script>
+/* ===================== 기본 설정 ===================== */
+const N = 15;
+const DIRS = [[1,0],[0,1],[1,1],[1,-1]];
+let board = new Int8Array(N*N);      // 0 빈칸, 1 흑, 2 백
+let turn = 1, over = false, history = [], winLine = null;
+let thinking = false, gameId = 0;
+let mode = 'ai', level = 'mid', human = 1;
+const record = {1:0, 2:0, d:0};
+let hover = null;
+
+const LEVEL_DESC = {
+  low:  '초보용. 가끔 실수하고 위협을 놓칩니다.',
+  mid:  '공격과 수비를 점수로 계산해 두는 중급 AI.',
+  high: '여러 수 앞을 내다보는 탐색형 AI. 꽤 강합니다!'
+};
+
+const inB = (x,y)=> x>=0 && y>=0 && x<N && y<N;
+const at  = (x,y)=> inB(x,y) ? board[y*N+x] : 3;   // 3 = 벽
+
+/* ===================== 패턴 점수 ===================== */
+function base(c, open){
+  if(c>=5) return 100000;
+  if(c===4) return open===2 ? 10000 : open===1 ? 1500 : 0;
+  if(c===3) return open===2 ? 1000  : open===1 ? 100  : 0;
+  if(c===2) return open===2 ? 100   : open===1 ? 10   : 0;
+  if(c===1) return open===2 ? 10    : open===1 ? 1    : 0;
+  return 0;
+}
+function broken(len, otherOpen){
+  if(len>=4) return 1500;
+  if(len===3) return otherOpen ? 600 : 60;
+  if(len===2) return 20;
+  return 0;
+}
+
+// (x,y)에 p가 놓인다고 가정했을 때의 점수
+function cellScore(x,y,p){
+  let total = 0, strong = 0;
+  for(const [dx,dy] of DIRS){
+    let f=0, nx=x+dx, ny=y+dy;
+    while(at(nx,ny)===p){ f++; nx+=dx; ny+=dy; }
+    const e1 = at(nx,ny)===0;
+    let g1=0;
+    if(e1){ let mx=nx+dx,my=ny+dy; while(at(mx,my)===p){ g1++; mx+=dx; my+=dy; } }
+
+    let b=0; nx=x-dx; ny=y-dy;
+    while(at(nx,ny)===p){ b++; nx-=dx; ny-=dy; }
+    const e2 = at(nx,ny)===0;
+    let g2=0;
+    if(e2){ let mx=nx-dx,my=ny-dy; while(at(mx,my)===p){ g2++; mx-=dx; my-=dy; } }
+
+    const c = 1+f+b;
+    let s = base(c, (e1?1:0)+(e2?1:0));
+    if(g1>0) s = Math.max(s, broken(c+g1, e2));
+    if(g2>0) s = Math.max(s, broken(c+g2, e1));
+    if(s>=1000) strong++;
+    total += s;
+  }
+  if(strong>=2) total += 8000;   // 4-4, 4-3, 3-3 같은 이중 위협
+  return total;
+}
+
+// 판 전체 평가
+function evalPlayer(p){
+  let total = 0;
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+    if(board[y*N+x]!==p) continue;
+    for(const [dx,dy] of DIRS){
+      const px=x-dx, py=y-dy;
+      if(at(px,py)===p) continue;
+      let n=1, nx=x+dx, ny=y+dy;
+      while(at(nx,ny)===p){ n++; nx+=dx; ny+=dy; }
+      const o1 = at(px,py)===0, o2 = at(nx,ny)===0;
+      total += base(n,(o1?1:0)+(o2?1:0));
+      if(o2 && at(nx+dx,ny+dy)===p){
+        let g=0, mx=nx+dx, my=ny+dy;
+        while(at(mx,my)===p){ g++; mx+=dx; my+=dy; }
+        total += broken(n+g, o1);
+      }
+    }
+  }
+  return total;
+}
+
+/* ===================== 승리 판정 ===================== */
+function checkWin(x,y,p){
+  for(const [dx,dy] of DIRS){
+    const cells=[[x,y]];
+    let nx=x+dx, ny=y+dy;
+    while(at(nx,ny)===p){ cells.push([nx,ny]); nx+=dx; ny+=dy; }
+    nx=x-dx; ny=y-dy;
+    while(at(nx,ny)===p){ cells.unshift([nx,ny]); nx-=dx; ny-=dy; }
+    if(cells.length>=5) return cells;
+  }
+  return null;
+}
+
+/* ===================== 후보 수 생성 ===================== */
+function genCands(p, K, raw){
+  const q = 3-p;
+  const mark = new Uint8Array(N*N);
+  let any = false;
+  for(let i=0;i<N*N;i++){
+    if(!board[i]) continue;
+    any = true;
+    const x=i%N, y=(i/N)|0;
+    for(let dy=-2;dy<=2;dy++) for(let dx=-2;dx<=2;dx++){
+      const nx=x+dx, ny=y+dy;
+      if(inB(nx,ny)) mark[ny*N+nx]=1;
+    }
+  }
+  if(!any) return [{x:7,y:7,i:7*N+7,att:0,def:0,s:0}];
+
+  const list=[], blocks=[];
+  for(let i=0;i<N*N;i++){
+    if(!mark[i] || board[i]) continue;
+    const x=i%N, y=(i/N)|0;
+    const att = cellScore(x,y,p);
+    if(!raw && att>=100000) return [{x,y,i,att,def:0,s:att,win:true}];
+    const def = cellScore(x,y,q);
+    const c = {x,y,i,att,def,s:att+def*0.9};
+    list.push(c);
+    if(def>=100000) blocks.push(c);
+  }
+  if(raw) return list;
+  if(blocks.length) return blocks;
+  list.sort((a,b)=>b.s-a.s);
+  return list.slice(0,K);
+}
+
+/* ===================== AI: 하 ===================== */
+function aiLow(p){
+  const list = genCands(p,0,true);
+  const win = list.find(c=>c.att>=100000);
+  if(win && Math.random()<0.85) return win;
+  const blk = list.find(c=>c.def>=100000);
+  if(blk && Math.random()<0.6) return blk;
+  if(Math.random()<0.35) return list[(Math.random()*list.length)|0];
+  const scored = list.map(c=>({c, v:c.att*0.6+c.def*0.3+Math.random()*60}))
+                     .sort((a,b)=>b.v-a.v).slice(0,4);
+  return scored[(Math.random()*scored.length)|0].c;
+}
+
+/* ===================== AI: 중 ===================== */
+function aiMid(p){
+  const cands = genCands(p,999);
+  if(cands[0].win || cands.length===1) return cands[0];
+  const top = cands[0].s;
+  const pool = cands.filter(c=>c.s>=top*0.95);
+  return pool[(Math.random()*pool.length)|0];
+}
+
+/* ===================== AI: 상 (Negamax + Alpha-Beta) ===================== */
+let nodes=0, aborted=false, deadline=0;
+function negamax(depth, alpha, beta, p, ply){
+  if(++nodes%200===0 && Date.now()>deadline) aborted=true;
+  if(aborted) return 0;
+  if(depth===0) return evalPlayer(p) - evalPlayer(3-p)*0.9;
+  const cands = genCands(p, Math.max(4, 10-ply*2));
+  if(!cands.length) return 0;
+  if(cands[0].win) return 1000000+depth;
+  let best=-Infinity;
+  for(const c of cands){
+    board[c.i]=p;
+    const v = -negamax(depth-1, -beta, -alpha, 3-p, ply+1);
+    board[c.i]=0;
+    if(aborted) return 0;
+    if(v>best) best=v;
+    if(best>alpha) alpha=best;
+    if(alpha>=beta) break;
+  }
+  return best;
+}
+function aiHigh(p){
+  const cands = genCands(p,12);
+  if(cands.length===1 || cands[0].win) return cands[0];
+  deadline = Date.now()+2500; aborted=false; nodes=0;
+  let best = cands[0];
+  for(const depth of [2,4,6]){
+    let alpha=-Infinity, curBest=null, curScore=-Infinity;
+    const ordered=[best, ...cands.filter(c=>c!==best)];
+    for(const c of ordered){
+      board[c.i]=p;
+      const v = -negamax(depth-1, -Infinity, -alpha, 3-p, 1);
+      board[c.i]=0;
+      if(aborted) break;
+      if(v>curScore){ curScore=v; curBest=c; }
+      if(v>alpha) alpha=v;
+    }
+    if(aborted || !curBest) break;
+    best = curBest;
+    if(curScore>=1000000) break;
+  }
+  return best;
+}
+
+/* ===================== 게임 진행 ===================== */
+const $ = id=>document.getElementById(id);
+const cv = $('cv'), ctx = cv.getContext('2d');
+
+function newGame(){
+  gameId++;
+  board = new Int8Array(N*N);
+  turn=1; over=false; history=[]; winLine=null; thinking=false; hover=null;
+  $('overlay').classList.remove('show');
+  updateUI(); draw();
+  if(mode==='ai' && human===2) aiTurn();
+}
+
+function place(x,y){
+  const p=turn;
+  board[y*N+x]=p;
+  history.push({x,y,p});
+  const w = checkWin(x,y,p);
+  if(w){
+    winLine=w; over=true; record[p]++;
+    finish(p);
+  } else if(history.length>=N*N){
+    over=true; record.d++;
+    finish(0);
+  } else {
+    turn = 3-p;
+  }
+  updateUI(); draw();
+  if(!over && mode==='ai' && turn!==human) aiTurn();
+}
+
+function finish(winner){
+  let txt;
+  if(winner===0) txt='🤝 무승부!';
+  else if(mode==='ai') txt = winner===human ? '🎉 당신의 승리!' : '🤖 AI의 승리...';
+  else txt = (winner===1?'⚫ 흑':'⚪ 백')+' 승리!';
+  $('ovText').textContent = txt;
+  setTimeout(()=>{ if(over) $('overlay').classList.add('show'); }, 700);
+}
+
+function aiTurn(){
+  thinking=true; updateUI();
+  const gid=gameId;
+  const delay = level==='high' ? 50 : 350;
+  setTimeout(()=>{
+    if(gid!==gameId) return;
+    const p=turn;
+    let m;
+    if(level==='low') m=aiLow(p);
+    else if(level==='mid') m=aiMid(p);
+    else m=aiHigh(p);
+    if(gid!==gameId) return;
+    thinking=false;
+    place(m.x,m.y);
+  }, delay);
+}
+
+function undo(){
+  if(over||thinking||!history.length) return;
+  const popOne=()=>{
+    const m=history.pop();
+    board[m.y*N+m.x]=0; turn=m.p; winLine=null;
+    return m;
+  };
+  if(mode==='pvp') popOne();
+  else{
+    if(!history.some(m=>m.p===human)) return;
+    let removed=false;
+    while(history.length && !removed){ if(popOne().p===human) removed=true; }
+  }
+  updateUI(); draw();
+}
+
+/* ===================== UI 갱신 ===================== */
+function updateUI(){
+  const st=$('status');
+  if(over){
+    st.textContent='게임 종료';
+  } else if(thinking){
+    st.innerHTML='🤖 AI가 생각 중...';
+  } else {
+    const dot = `<span class="dot ${turn===1?'b':'w'}"></span>`;
+    if(mode==='ai') st.innerHTML = dot + (turn===human ? '당신의 차례' : 'AI의 차례');
+    else st.innerHTML = dot + (turn===1?'흑':'백') + ' 차례';
+  }
+  document.querySelectorAll('.aiOnly').forEach(e=>e.classList.toggle('hide', mode!=='ai'));
+  $('levelDesc').textContent = LEVEL_DESC[level];
+  $('btnUndo').disabled = over || thinking || !history.length ||
+      (mode==='ai' && !history.some(m=>m.p===human));
+  $('sB').textContent=record[1]; $('sW').textContent=record[2]; $('sD').textContent=record.d;
+}
+
+function bindSeg(id, cb){
+  const seg=$(id);
+  seg.addEventListener('click', e=>{
+    const b=e.target.closest('button'); if(!b) return;
+    seg.querySelectorAll('button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    cb(b.dataset.v);
+  });
+}
+bindSeg('segMode', v=>{ mode=v; newGame(); });
+bindSeg('segLevel', v=>{ level=v; newGame(); });
+bindSeg('segColor', v=>{ human=+v; newGame(); });
+$('btnNew').onclick=newGame;
+$('ovBtn').onclick=newGame;
+$('btnUndo').onclick=undo;
+
+/* ===================== 그리기 ===================== */
+let S=600, pad=40, step=40, dpr=1;
+function resize(){
+  dpr = window.devicePixelRatio||1;
+  S = cv.clientWidth;
+  cv.width = S*dpr; cv.height = S*dpr;
+  pad = S/16; step=(S-2*pad)/(N-1);
+  draw();
+}
+window.addEventListener('resize', resize);
+
+function px(i){ return pad+i*step; }
+
+function drawStone(x,y,p,alpha=1){
+  const cx=px(x), cy=px(y), r=step*0.45;
+  ctx.save(); ctx.globalAlpha=alpha;
+  ctx.shadowColor='rgba(0,0,0,.45)'; ctx.shadowBlur=step*0.18; ctx.shadowOffsetY=step*0.06;
+  const g=ctx.createRadialGradient(cx-r*.35,cy-r*.35,r*.1,cx,cy,r);
+  if(p===1){ g.addColorStop(0,'#666'); g.addColorStop(1,'#050505'); }
+  else     { g.addColorStop(0,'#ffffff'); g.addColorStop(1,'#cfcfcf'); }
+  ctx.fillStyle=g;
+  ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function draw(){
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,S,S);
+  // 판
+  const bg=ctx.createLinearGradient(0,0,S,S);
+  bg.addColorStop(0,'#e8bf74'); bg.addColorStop(1,'#d3a354');
+  ctx.fillStyle=bg; ctx.fillRect(0,0,S,S);
+  // 선
+  ctx.strokeStyle='#5a4220'; ctx.lineWidth=Math.max(1,S/500);
+  ctx.beginPath();
+  for(let i=0;i<N;i++){
+    ctx.moveTo(px(i),px(0)); ctx.lineTo(px(i),px(N-1));
+    ctx.moveTo(px(0),px(i)); ctx.lineTo(px(N-1),px(i));
+  }
+  ctx.stroke();
+  ctx.lineWidth=Math.max(2,S/250);
+  ctx.strokeRect(px(0),px(0),px(N-1)-px(0),px(N-1)-px(0));
+  // 화점
+  ctx.fillStyle='#3a2a10';
+  for(const a of [3,7,11]) for(const b of [3,7,11]){
+    ctx.beginPath(); ctx.arc(px(a),px(b),step*0.1,0,Math.PI*2); ctx.fill();
+  }
+  // 돌
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+    const v=board[y*N+x]; if(v) drawStone(x,y,v);
+  }
+  // 마지막 수 표시
+  if(history.length){
+    const m=history[history.length-1];
+    ctx.fillStyle='#ff3b30';
+    ctx.beginPath(); ctx.arc(px(m.x),px(m.y),step*0.11,0,Math.PI*2); ctx.fill();
+  }
+  // 호버 미리보기
+  if(hover && !over && !thinking && board[hover.y*N+hover.x]===0 &&
+     (mode==='pvp' || turn===human)){
+    drawStone(hover.x,hover.y,turn,0.45);
+  }
+  // 승리 라인
+  if(winLine){
+    ctx.strokeStyle='#ff3b30'; ctx.lineWidth=Math.max(3,S/150); ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(px(winLine[0][0]),px(winLine[0][1]));
+    const L=winLine[winLine.length-1];
+    ctx.lineTo(px(L[0]),px(L[1]));
+    ctx.stroke();
+    ctx.lineWidth=Math.max(2,S/250);
+    for(const [x,y] of winLine){
+      ctx.beginPath(); ctx.arc(px(x),px(y),step*0.5,0,Math.PI*2); ctx.stroke();
+    }
+  }
+}
+
+/* ===================== 입력 ===================== */
+function cellFromEvent(e){
+  const r=cv.getBoundingClientRect();
+  const mx=(e.clientX-r.left)*(S/r.width), my=(e.clientY-r.top)*(S/r.height);
+  const x=Math.round((mx-pad)/step), y=Math.round((my-pad)/step);
+  return inB(x,y) ? {x,y} : null;
+}
+cv.addEventListener('pointermove', e=>{
+  if(e.pointerType==='touch') return;
+  hover=cellFromEvent(e); draw();
+});
+cv.addEventListener('pointerleave', ()=>{ hover=null; draw(); });
+cv.addEventListener('pointerdown', e=>{
+  if(over||thinking) return;
+  if(mode==='ai' && turn!==human) return;
+  const c=cellFromEvent(e);
+  if(!c || board[c.y*N+c.x]) return;
+  hover=null;
+  place(c.x,c.y);
+});
+
+/* ===================== 시작 ===================== */
+resize();
+newGame();
+</script>
+</body>
+</html>
